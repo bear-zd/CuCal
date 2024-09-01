@@ -1,0 +1,1 @@
+int64_t launch_reduce2int(int *x, int *y, int64_t n);
