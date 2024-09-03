@@ -14,10 +14,10 @@ def show_time(func):
             res = func(*args, **kwargs)
         for _ in range(ntest):
             # sync the threads to get accurate cuda running time
-            torch.cuda.synchronize(device="cuda:0")
+            # torch.cuda.synchronize(device="cuda:0")
             start_time = time.time()
             res = func(*args, **kwargs)
-            torch.cuda.synchronize(device="cuda:0")
+            # torch.cuda.synchronize(device="cuda:0")
             end_time = time.time()
             times.append((end_time - start_time) * 1e6)
         return times, res
@@ -33,17 +33,17 @@ cuda_module.torch_launch_gemm2 = show_time(cuda_module.torch_launch_gemm2)
 torch.mm = show_time(torch.mm)
 
 if __name__ == "__main__":
-    a = torch.rand((1024, 512), dtype=torch.float32,device='cuda')
-    b = torch.rand((512, 1024), dtype=torch.float32,device='cuda')
+    a = torch.rand((64, 64), dtype=torch.float32,device='cuda')
+    b = torch.rand((64, 64), dtype=torch.float32,device='cuda')
     # int_a = torch.ones(2**20, dtype=torch.int8, device="cuda:0")
     cal_time, cuda_res = cuda_module.torch_launch_gemm2(a, b)
-    o = torch.zeros((1024, 1024), dtype=torch.float32,device='cuda')
+    # o = torch.zeros((1024, 1024), dtype=torch.float32,device='cuda')
     print("cuda time:  {:.3f}us".format(np.mean(cal_time)))
-    cal_time, torch_res = torch.mm(a, b, out=o) 
+    # cal_time, torch_res = torch.mm(a, b, out=o) 
     print("torch time:  {:.3f}us".format(np.mean(cal_time)))
     print(cuda_res[0])
     
-    print(o[0])
+    # print(o[0])
 
     # actually result is correct. The result isn't equals sum is because the sum inplace chaging the value.
     # print(result, int_b.sum(0))

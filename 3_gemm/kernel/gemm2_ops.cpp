@@ -12,10 +12,10 @@ torch::Tensor torch_launch_gemm2(torch::Tensor x, torch::Tensor y) {
 
     // Create output tensor
     auto options = torch::TensorOptions().dtype(torch::kFloat32).device(x.device());
-    auto z = torch::empty({m, n}, options);
+    auto z = torch::zeros({m, n}, options);
 
     // Call CUDA kernel launcher
-    launch_gemm2(x.data_ptr<float>(), y.data_ptr<float>(), z.data_ptr<float>(), m, n, k);
+    launch_gemm2((float *)x.data_ptr(), (float *)y.data_ptr(), (float *)z.data_ptr(), m, n, k);
 
     return z;
 }
