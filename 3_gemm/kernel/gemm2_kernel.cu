@@ -99,8 +99,8 @@ __global__ void sgemm_V3(
     float * __restrict__ a, float * __restrict__ b, float * __restrict__ c,
     const int M, const int N, const int K) {
 
-    const int BM = 128;
-    const int BN = 128;
+    const int BM = 32;
+    const int BN = 32;
     const int BK = 8;
     const int TM = 8;
     const int TN = 8;
@@ -216,16 +216,17 @@ __global__ void sgemm_V3(
 
 void launch_gemm2(float* a, float* b, float* c, int M, int N, int K) {
     // Define block and grid sizes
-    int BM = 128;
-    int BN = 128;
+
+    int BM = 32;
+    int BN = 32;
     dim3 blockSize(BN, BM); // 16x16 threads per block
     dim3 gridSize((N + BN - 1) / BN, (M + BM - 1) / BM);
 
     // Launch the kernel
-    sgemm_V3<<<gridSize, blockSize>>>(a, b, c, M, N, K);
-
+    naiveSgemm<<<gridSize, blockSize>>>(a, b, c, M, N, K);
+    cudaDeviceSynchronize();
     // Check for CUDA errors
     cudaError_t err = cudaGetLastError();
-    printf("%d", err);
+    // printf("%d", err);
 
 }

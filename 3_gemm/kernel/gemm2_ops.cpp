@@ -16,7 +16,7 @@ torch::Tensor torch_launch_gemm2(torch::Tensor x, torch::Tensor y) {
 
     // Call CUDA kernel launcher
     launch_gemm2((float *)x.data_ptr(), (float *)y.data_ptr(), (float *)z.data_ptr(), m, n, k);
-
+    
     return z;
 }
 

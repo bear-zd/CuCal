@@ -33,13 +33,13 @@ cuda_module.torch_launch_gemm2 = show_time(cuda_module.torch_launch_gemm2)
 torch.mm = show_time(torch.mm)
 
 if __name__ == "__main__":
-    a = torch.rand((64, 64), dtype=torch.float32,device='cuda')
-    b = torch.rand((64, 64), dtype=torch.float32,device='cuda')
+    a = torch.rand((128, 128), dtype=torch.float32,device='cuda')
+    b = torch.rand((128, 128), dtype=torch.float32,device='cuda')
     # int_a = torch.ones(2**20, dtype=torch.int8, device="cuda:0")
     cal_time, cuda_res = cuda_module.torch_launch_gemm2(a, b)
-    # o = torch.zeros((1024, 1024), dtype=torch.float32,device='cuda')
+    o = torch.zeros((128, 128), dtype=torch.float32,device='cuda')
     print("cuda time:  {:.3f}us".format(np.mean(cal_time)))
-    # cal_time, torch_res = torch.mm(a, b, out=o) 
+    cal_time, torch_res = torch.mm(a, b, out=o) 
     print("torch time:  {:.3f}us".format(np.mean(cal_time)))
     print(cuda_res[0])
     
