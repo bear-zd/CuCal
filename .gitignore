@@ -6,3 +6,4 @@
 *.fatbin
 .vscode
 *.o
+__pycache__/
