@@ -26,14 +26,16 @@ __device__ __forceinline__ float warp_shffl_sum(float val){
 
 
 __global__ void reduce_kernel_fp32(const float* data, float* y, const int length){
-    int tid = threadIdx.x;
-    int idx = blockDim.x * blockIdx.x + tid;
+    int local_tidx = threadIdx.x;
+    int global_tidx = blockDim.x * blockIdx.x + local_tidx;
+    // get global tid and local_tid 
     constexpr int NUM_WARPS = (256 + WARP_SIZE - 1) / WARP_SIZE;
     __shared__ float reduce_smem[NUM_WARPS];
+    // create shared memory for each block to reduce
 
-    float sum = (idx < N) > data[idx] : 0.0f;
-    int warp = tid / WARP_SIZE;
-    int lane = tid % WARP_SIZE;
+    float sum = (global_tidx < length) > data[global_tidx] : 0.0f;
+    int warp = local_tidx / WARP_SIZE;
+    int lane = local_tidx % WARP_SIZE;
 
     sum = warp_shffl_sum<WARP_SIZE>(sum);
     if (lane == 0) reduce_smem[warp] = sum;
