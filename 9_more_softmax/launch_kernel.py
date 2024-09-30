@@ -2,7 +2,7 @@ from torch.utils.cpp_extension import load_inline
 from pathlib import Path
 import torch
 import time
-ntest = 1
+ntest = 10
 
 def show_time(func):
     def wrapper(*args, **kwargs):
@@ -32,15 +32,21 @@ def load_cuda(cuda_src, cpp_src, funcs, opt=True, verbose=False, name=None):
                        extra_cuda_cflags=[flags], verbose=verbose, name=name)
 
 
+# cuda_src = Path("softmax_kernel.cu").read_text()
+# cpp_src = "torch::Tensor launch_softmax_kernel_fp32(torch::Tensor x);"
+# funcs = ["launch_softmax_kernel_fp32"]
+
 cuda_src = Path("softmax_kernel.cu").read_text()
-cpp_src = "torch::Tensor launch_softmax_kernel_fp32(torch::Tensor x);"
-funcs = ["launch_softmax_kernel_fp32"]
+cpp_src = "torch::Tensor launch_softmax_kernel_fp32(torch::Tensor x);\ntorch::Tensor launch_online_softmax_kernel_fp32(torch::Tensor x);"
+funcs = ["launch_softmax_kernel_fp32", "launch_online_softmax_kernel_fp32"]
 
 lib = load_cuda(cuda_src, cpp_src, funcs)
 
-i1 = torch.rand(1000, dtype=torch.float32).cuda()
+i1 = torch.rand(1024, dtype=torch.float32).cuda()
 torch.nn.Softmax = show_time(torch.nn.Softmax(dim=0))
 lib.launch_softmax_kernel_fp32 = show_time(lib.launch_softmax_kernel_fp32)
+lib.launch_online_softmax_kernel_fp32 = show_time(lib.launch_online_softmax_kernel_fp32)
 torch_res = torch.nn.Softmax(i1)
-cuda_res = lib.launch_softmax_kernel_fp32(i1)
-print(i1[0], torch_res[0], cuda_res[0], torch.sum(torch_res), torch.sum(cuda_res))
+cudasafe_res = lib.launch_softmax_kernel_fp32(i1)
+cudaonline_res = lib.launch_online_softmax_kernel_fp32(i1)
+print(i1[0], torch_res[0:10], cudasafe_res[0:10], cudaonline_res[0:10])

@@ -15,7 +15,7 @@
 #define CHECK_CONTIGUOUS(x) TORCH_CHECK(x.is_contiguous(), #x " must be contiguous")
 #define CHECK_INPUT(x) CHECK_CUDA(x); CHECK_CONTIGUOUS(x)
 #define CUDA_ERR(ans) { gpuAssert((ans), __FILE__, __LINE__); }
-
+#define WARP_SIZE 32
 inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)
 {
    if (code != cudaSuccess) 
@@ -25,7 +25,32 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=t
    }
 }
 
-#define WARP_SIZE 32
+struct __align__(8) MD
+{
+    float m;
+    float d;
+}; 
+
+
+template<const int kWarpSize = WARP_SIZE>
+__device__ __forceinline__ MD warp_reduce_md_op(MD value) {
+    unsigned int mask = 0xffffffff;
+    #pragma unroll
+    for(int stride = kWarpSize >> 1; stride >= 1; stride >>= 1) {
+        MD other;
+        other.m = __shfl_xor_sync(mask, value.m, stride);
+        other.d = __shfl_xor_sync(mask, value.d, stride);
+
+        bool value_bigger = (value.m > other.m);
+        MD bigger_m = value_bigger ? value : other;
+        MD smaller_m = value_bigger ? other : value;
+        
+        value.d = bigger_m.d + smaller_m.d * __expf(smaller_m.m - bigger_m.m);
+        value.m = bigger_m.m;
+    }
+    return value;
+}
+
 
 template<const int kWarpSize = WARP_SIZE>
 __device__ __forceinline__ float warp_shffl_sum(float val){
@@ -82,22 +107,6 @@ __device__ float block_reduce_max_f32(float val) {
 }
 
 
-// template<const int NUM_THREADS = 256>
-// __global__ void safe_softmax_kernel(const float* x, float* y, float* total,int length){
-
-//     int local_tid = threadIdx.x;
-//     int global_tid = blockIdx.x * NUM_THREADS + threadIdx.x;
-//     float val = global_tid < length ? x[global_tid] : -FLT_MAX;
-//     float max_val = block_reduce_max_f32<NUM_THREADS>(val);
-//     float exp_val = global_tid < length ? expf(x[global_tid] - max_val) : 0.0f;
-//     float exp_sum = block_reduce_sum_f32<NUM_THREADS>(exp_val);
-//     if (local_tid == 0) atomicAdd(total, exp_sum);
-//     __threadfence(); // grid level memory fence
-//     // e^x_i/sum(e^x_0,...,e^x_n-1) 
-//     // printf("N: %d, idx: %d, bid: %d, tid: %d, exp_val: %f, exp_sum: %f, total: %f\n", 
-//     //         N,     idx, blockIdx.x,  tid,     exp_val,     exp_sum,     *total);
-//     if (global_tid < length) y[global_tid] = exp_val / (*total); 
-// }
 
 template<const int NUM_THREADS = 256>
 __global__ void safe_softmax_kernel(const float* x, float* y, float* total,int length){
@@ -110,7 +119,6 @@ __global__ void safe_softmax_kernel(const float* x, float* y, float* total,int l
     float exp_sum = block_reduce_sum_f32<NUM_THREADS>(exp_val);
     if (local_tid == 0) {
       atomicAdd(total, exp_sum);
-      printf("%f, %f\n", exp_sum, *total);
     }
     __threadfence(); 
     
@@ -118,7 +126,41 @@ __global__ void safe_softmax_kernel(const float* x, float* y, float* total,int l
 }
 
 
-// if per token: x 
+template<const int NUM_THREADS = 256 >
+__global__ void online_softmax_kernel(const float* x, float* y, int length) {
+  
+    int local_tid = threadIdx.x;
+    int global_tid = blockIdx.x * NUM_THREADS + threadIdx.x;
+    const int WAPR_NUM = NUM_THREADS / WARP_SIZE;
+    int warp_id = local_tid / WARP_SIZE;
+    int lane_id = local_tid % WARP_SIZE;
+    MD val;
+    val.m = global_tid < length ? x[global_tid] : -FLT_MAX;
+    val.d = global_tid < length ? 1.0f : 0.0f;
+
+    __shared__ MD shared[ WAPR_NUM ]; 
+    MD res = warp_reduce_md_op<WARP_SIZE>(val);
+
+    if (lane_id == 0) shared[warp_id] = res; 
+    __syncthreads();
+
+    if (local_tid < WARP_SIZE) {
+        MD block_res = shared[local_tid];
+        block_res = warp_reduce_md_op<WAPR_NUM>(block_res); 
+        if (local_tid == 0) {
+            shared[0] = block_res; 
+        }
+    }
+    __syncthreads();
+
+    MD final_res = shared[0];
+    float d_total_inverse = __fdividef(1.0f, final_res.d);
+    if (global_tid < length) {
+        y[global_tid] = __expf(x[global_tid] - final_res.m) * d_total_inverse;
+    }
+}
+
+
 
 torch::Tensor launch_softmax_kernel_fp32(torch::Tensor x){
     CHECK_INPUT(x);    
@@ -130,6 +172,20 @@ torch::Tensor launch_softmax_kernel_fp32(torch::Tensor x){
     dim3 block(256);
     dim3 grid((N + block.x - 1) / block.x);
     safe_softmax_kernel<256><<<grid, block>>>(x.data_ptr<float>(), output.data_ptr<float>(), total.data_ptr<float>(), N);
+    CUDA_ERR(cudaGetLastError());
+    CUDA_ERR(cudaDeviceSynchronize());
+    return output;
+}
+
+torch::Tensor launch_online_softmax_kernel_fp32(torch::Tensor x){
+    CHECK_INPUT(x);    
+    auto options = torch::TensorOptions().dtype(torch::kFloat32).device(x.device());
+    const int N = x.numel();
+
+    auto output = torch::zeros({N}, options);
+    dim3 block(256);
+    dim3 grid((N + block.x - 1) / block.x);
+    online_softmax_kernel<256><<<grid, block>>>(x.data_ptr<float>(), output.data_ptr<float>(), N);
     CUDA_ERR(cudaGetLastError());
     CUDA_ERR(cudaDeviceSynchronize());
     return output;
