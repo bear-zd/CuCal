@@ -42,8 +42,8 @@ funcs = ["gemm"]
 
 lib = load_cuda(cuda_src, cpp_src, funcs)
 
-x = torch.rand((1024, 1024), dtype=torch.float32).cuda()
-y = torch.rand((1024, 1024), dtype=torch.float32).cuda()
+x = torch.rand((1024, 512), dtype=torch.float32).cuda()
+y = torch.rand((512, 1024), dtype=torch.float32).cuda()
 
 lib.gemm = show_time(lib.gemm)
 
