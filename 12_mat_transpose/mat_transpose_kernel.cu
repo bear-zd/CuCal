@@ -24,11 +24,7 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=t
    }
 }
 #define BLOCKDIM 16
-#define BLOCK_DIM 16
-struct __align__(16) float4 {
-    float x, y, z, w;
-};
-__global__ void mat_transpose_naive(float* x, float* out, int cols, int rows){
+__global__ void naive(float* x, float* out, int cols, int rows){
     int row_idx = blockIdx.x * blockDim.x + threadIdx.x;
     int col_idx = blockIdx.y * blockDim.y + threadIdx.y;
     if (row_idx < rows && col_idx < cols){
@@ -38,7 +34,7 @@ __global__ void mat_transpose_naive(float* x, float* out, int cols, int rows){
     }
 }
 
-__global__ void mat_transpose_shared(float* x, float* out, int cols, int rows){
+__global__ void shared(float* x, float* out, int cols, int rows){
     unsigned int local_row_idx = threadIdx.x;
     unsigned int local_col_idx = threadIdx.y;
     unsigned int row_idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -48,31 +44,33 @@ __global__ void mat_transpose_shared(float* x, float* out, int cols, int rows){
     if (row_idx < rows && col_idx < cols){
         unsigned int idx = col_idx + row_idx * cols;
         tile[local_col_idx][local_row_idx] = x[idx];
-    }
-    __syncthreads();
-    if (row_idx < rows && col_idx < cols){
-        unsigned int idx = row_idx + col_idx * rows;
+        __syncthreads();
+        idx = row_idx + col_idx * rows;
         out[idx] = tile[local_col_idx][local_row_idx];
     }
 }
 
-__global__ void mat_transpose_shared_pack(float* x, float* out, int cols, int rows){
+
+
+__global__ void shared_pad(float* x, float* out, int cols, int rows){
     unsigned int local_row_idx = threadIdx.x;
     unsigned int local_col_idx = threadIdx.y;
-    unsigned int row_idx = blockIdx.x * blockDim.x / 4 + threadIdx.x;
-    unsigned int col_idx = blockIdx.y * blockDim.y / 4+ threadIdx.y;
-    __shared__ float tile[BLOCKDIM][BLOCKDIM];
+    unsigned int row_idx = blockIdx.x * blockDim.x + threadIdx.x;
+    unsigned int col_idx = blockIdx.y * blockDim.y + threadIdx.y;
+    __shared__ float tile[BLOCKDIM][BLOCKDIM + 4];
     
     if (row_idx < rows && col_idx < cols){
         unsigned int idx = col_idx + row_idx * cols;
         tile[local_col_idx][local_row_idx] = x[idx];
-    }
-    __syncthreads();
-    if (row_idx < rows && col_idx < cols){
-        unsigned int idx = row_idx + col_idx * rows;
+        __syncthreads();
+        idx = row_idx + col_idx * rows;
         out[idx] = tile[local_col_idx][local_row_idx];
     }
 }
+
+
+
+
 
 
 #define MAT_TRANSPOSE_CREATE(kernel_function_name) \
@@ -106,6 +104,8 @@ torch::Tensor mat_transpose_##kernel_function_name(torch::Tensor x){       \
     return out;\
 }
 
-MAT_TRANSPOSE_CREATE(mat_transpose_naive)
-MAT_TRANSPOSE_CREATE(mat_transpose_shared)
-MAT_TRANSPOSE_CREATE_PACK()
+MAT_TRANSPOSE_CREATE(naive)
+MAT_TRANSPOSE_CREATE(shared)
+MAT_TRANSPOSE_CREATE(shared_pad)
+// MAT_TRANSPOSE_CREATE_PACK(shared_pack4)
+// MAT_TRANSPOSE_CREATE_PACK(shared_pack4_bank)
