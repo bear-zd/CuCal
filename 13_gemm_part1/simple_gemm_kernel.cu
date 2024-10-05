@@ -142,6 +142,6 @@ torch::Tensor gemm(torch::Tensor x, torch::Tensor y){
     float* x_ptr = x.data_ptr<float>();
     float* y_ptr = y.data_ptr<float>();
     float* z_ptr = z.data_ptr<float>();
-    sgemm_t_8x8_sliced_k_f32x4_kernel<<<grid, block>>>(x_ptr, y_ptr, z_ptr, m, n, k);
+    gemm_shared_tile<<<grid, block>>>(x_ptr, y_ptr, z_ptr, m, n, k);
     return z;
 }

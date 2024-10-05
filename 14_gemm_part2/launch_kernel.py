@@ -36,7 +36,7 @@ def load_cuda(cuda_src, cpp_src, funcs, opt=True, verbose=False, name=None):
 # cpp_src = "torch::Tensor launch_softmax_kernel_fp32(torch::Tensor x);"
 # funcs = ["launch_softmax_kernel_fp32"]
 
-cuda_src = Path("simple_gemm_kernel.cu").read_text()
+cuda_src = Path("complex_gemm_kernel.cu").read_text()
 cpp_src = "torch::Tensor gemm(torch::Tensor x, torch::Tensor y);"
 funcs = ["gemm"]
 
